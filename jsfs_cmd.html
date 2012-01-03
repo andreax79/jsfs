@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+    <head>
+		<link rel="stylesheet" type="text/css" href="css/codemirror.css" media="all" />
+		<link rel="stylesheet" type="text/css" href="css/jsfs_cmd.css" media="all" />		
+		<script type="text/javascript" src="lib/jquery-1.6.2.min.js"></script>
+		<script type="text/javascript" src="lib/codemirror.js"></script>
+	    <meta content="text/html; charset=UTF-8" http-equiv="content-type" />
+	    <title>JSFS Test</title>
+    </head> 
+    <body>
+
+	<div id="editorBox">
+	    <form method="POST">
+			<h2>Editor</h2>
+			<textarea id="editor" name="editor" cols="80" rows="20"></textarea>
+		</form>
+	</div>
+	
+	<p>
+		<a href="#" id="editorExec" style="margin-right: 2em;">Execute code in console</a>
+		<a href="#" id="toggleEditor">Show/Hide editor</a>
+	</p>
+
+	<h2>Console</h2>
+
+	<iframe src="console_frame.html" id="consoleFrame" name="consoleFrame">
+	</iframe>
+
+<script type="text/javascript">
+	var editor = null;
+	
+	$(function() {
+		editor = CodeMirror.fromTextArea($("#editor")[0], {
+			lineNumbers: true,
+			matchBrackets: true,
+			mode: "javascript",
+		});
+
+		$('#editorExec').click(function () { 		
+			top.consoleFrame.cmd.doExec(editor.getValue());
+			top.consoleFrame.cmd.doPrompt();
+			return false;
+		});
+
+		$('#toggleEditor').click(function () {
+			$('#editorExec').toggle();
+			$('#editorBox').toggle();
+		});
+	});
+</script>
+
+    </body>
+</html>

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+    <head>
+	    <link rel="stylesheet" type="text/css" href="css/vt100.css" media="all" />
+		<script type="text/javascript" src="lib/jquery-1.6.2.min.js"></script>
+		<script type="text/javascript" src="lib/vt100.js"></script>
+		<script type="text/javascript" src="jsfs.js"></script>
+		<script type="text/javascript" src="jsfs_cmd.js"></script>
+	    <meta content="text/html; charset=UTF-8" http-equiv="content-type" />
+	    <title></title>
+    </head> 
+    <body>
+
+	<script type="text/javascript">
+		if (typeof navigator.appName == 'undefined' || navigator.appName != 'Netscape') {
+			document.write('<style type="text/css">'
+					+ '#vt100 #console div, #vt100 #alt_console div {'
+					+ '  overflow: hidden;' + '}' + '</style>');
+		}
+		$(function() {
+			suppressAllAudio = true;
+			linkifyURLs = 1;
+			cmd = new JSFSCmd();
+		});
+	</script>
+	
+</body>
+</html>

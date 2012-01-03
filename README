@@ -1,0 +1,3 @@
+JSFS
+
+JSFS is javascript filesystem for the HTML5 Web Storage (it does not use the Filesystem API).
