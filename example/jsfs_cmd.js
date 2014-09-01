@@ -20,6 +20,9 @@
  * THE SOFTWARE.
  */
 
+fs = jsfs;
+process = jsfs.getProcess();
+
 STATE_PROMPT = 1;
 STATE_READLINE = 2;
 STATE_COMMAND = 3;
@@ -46,17 +49,17 @@ function extend(subClass, baseClass) {
 function JSFSCmd(container) {
 	var self = this;
 	this.superClass.constructor.call(this, container);
-	this.banner = "JSFS v" + JSFS_VERSION +"\r\nType 'help' for help.";
-	this.historyFile = new File("/history");
+	this.banner = "JSFS" + "\r\nType 'help' for help.";
+	// this.historyFile = new File("/history");
 	this.history = new Array();
 	this.historyPosition = self.history.length;	
-	this.historyFile.read({ type: 'json',
+	/*this.historyFile.read({ type: 'json',
 		  success: function(args){
 			  self.history = args['content'];
 			  if (self.history == null || self.history == undefined)
 				  self.history = new Array();
 			  self.historyPosition = self.history.length;			  
-	      }});
+	      }});*/
 	this.printUnicode(this.banner);
 	this.setPrompt(DEFAULT_PROMPT);
 	this.handlers = {
@@ -69,6 +72,7 @@ function JSFSCmd(container) {
 			'cd': 			['doCd',			'Changes the current directory'],	 
 			'pwd':	 		['doPwd',			'Prints the current directory'],	 
 			'ls': 			['doLs',			'Lists files and directories'],
+			'ln': 			['doLn',			''],
 			'mkdir': 		['doMkdir',			'Creates directories'],
 			'rmdir': 		['doRmdir',			'Removes directories'],
 			'rm': 			['doRm',			'Removes files'],
@@ -76,7 +80,8 @@ function JSFSCmd(container) {
 			'cp': 			['doCp',			'Copies file'],
 			'run': 			['doRun',			'Loads and executes a file'],
 			'edit': 		['doEdit',			'Opens a file in the editor'],
-			'save':			['doSave',			'Writes editor content to a file']
+			'save':			['doSave',			'Writes editor content to a file'],
+			'write':		['doWrite',			'Write a string to a file']
 	};
 	this.gotoState(STATE_PROMPT);
 };
@@ -266,7 +271,7 @@ JSFSCmd.prototype.doReadLine = function() {
 			if (this.line.length > 0) {
 				this.history.push(this.line);
 				this.history = this.history.slice(-MAX_HISTORY_LINES);
-				this.historyFile.write({content: this.history });
+				// this.historyFile.write({content: this.history });
 			}
 			this.vt100('\r\n');
 			this.gotoState(STATE_COMMAND);
@@ -317,6 +322,7 @@ JSFSCmd.prototype.doExec = function(_line) {
 			this[_handler](_args);
 		} catch (err) { // error in command execution
 			var result = "\u001B[24;31m" + err + "\u001B[0m";
+			// var result = "\u001B[24;31m" + err + ' ' + err.stack.replace('\n', '\n\r') + "\u001B[0m";
 			this.vt100((this.cursorX != 0 ? '\r\n' : '') + result);
 		}
 	} else {
@@ -382,17 +388,70 @@ JSFSCmd.prototype.doEcho = function(_line) {
 	}
 };
 
+JSFSCmd.prototype.mode_string = function(mode) {
+    var S_IFDIR = 16384;
+    var S_IFREG = 32768;
+    var S_IFLNK = 40960;
+
+    var mode_chars = "rwxSTst";
+	var buf = '';
+    if ((mode & S_IFDIR) == S_IFDIR) {
+        buf += 'd';
+    } else if ((mode & S_IFLNK) == S_IFLNK) {
+        buf += 'l';
+    } else if ((mode & S_IFREG) == S_IFREG) {
+        buf += '-';
+    } else {
+        buf += '?';
+    }
+	var i = 0;
+	var m = 0400;
+    var p;
+	do {
+		j = k = 0;
+		do {
+			if (mode & m) {
+			    buf += mode_chars[j];
+				k = j;
+			} else {
+                buf += '-';
+            }
+			m >>= 1;
+		} while (++j < 3);
+		++i;
+		if (mode & (010000 >> i)) {
+            buf.pop();
+			buf += mode_chars[3 + (k & 2) + (i == 3)];
+		}
+	} while (i < 3);
+
+    return buf;
+}
+
+
 JSFSCmd.prototype.doLs = function(args) {	
 	if (args == "")
-		args = File.prototype.currentDir;
+		args = process.cwd();
 	args = args.split(' ');
 	if (args.length > 1)
 		throw "too many arguments";
 	var filename = args[0];
-	var files = new File(filename).listFiles();
-	if (files == undefined)
-		throw "Not a directory";
-	for (var name in files) {
+    var files = fs.readdirSync(filename);
+    files.unshift('..');
+    files.unshift('.');
+    for (var i in files) {
+        var name = files[i];
+        var stat = fs.lstatSync(filename + '/' + name);
+        // console.log(stat);
+        this.writeln(this.mode_string(stat.mode) + " " + 
+                     this.pad(stat.nlink, 4) + " " +
+                     this.pad(stat.uid, 8) + " " +
+                     this.pad(stat.gid, 8) + " " +
+                     this.pad(stat.size, 12) + " " +
+                     stat.mtime + " " +
+                     name);
+    }
+    /*
 		var file = files[name];
 		var date = file.getCreationTime();
 		date = this.pad(date.getFullYear(), 4, 'left', '0') + '-' + this.pad(date.getMonth()+1, 2, 'left', '0') + '-' + this.pad(date.getDate(), 2, 'left', '0') + ' ' +
@@ -402,17 +461,20 @@ JSFSCmd.prototype.doLs = function(args) {
 					 this.pad("<" + file.getType() + ">", 6) + " " +
 					 date);
 	}
+    */
 };
 
-JSFSCmd.prototype.errorCallback = function(args) {
-	this.writeln(args['file'].getName() + ": " + args['error']);
+JSFSCmd.prototype.errorCallback = function(filename, err) {
+	// this.writeln(args['file'].getName() + ": " + args['error']);
+	this.writeln(filename + ": " + err.message);
+
 };
 
 JSFSCmd.prototype.successCallback = function(args) {
 };
 
 JSFSCmd.prototype.doPwd = function(args) {
-	this.writeln("Current directory: " + File.prototype.currentDir);
+	this.writeln("Current directory: " + process.cwd());
 };
 
 JSFSCmd.prototype.doCd = function(args) {	
@@ -423,11 +485,12 @@ JSFSCmd.prototype.doCd = function(args) {
 		throw "too many arguments";
 	var filename = args[0];
 	var self = this;
-	new File(filename).chdir({ error: function(args){ self.errorCallback(args); },
-							   success: function(args){
-								   self.doPwd();
-								   self.successCallback();
-							   }});	
+    try {
+        process.chdir(filename);
+        self.doPwd();
+    } catch (err) {
+        self.errorCallback(filename, err);
+    }
 };
 
 JSFSCmd.prototype.doMkdir = function(args) {	
@@ -438,8 +501,7 @@ JSFSCmd.prototype.doMkdir = function(args) {
 		throw "too many arguments";
 	var filename = args[0];
 	var self = this;
-	new File(filename).mkdir({ error: function(args){ self.errorCallback(args); },
-							   success: function(args){ self.successCallback(args); }});
+    fs.mkdir(filename, function(err) { if (err) { self.errorCallback(filename, err); }});
 };
 
 JSFSCmd.prototype.doRmdir = function(args) {	
@@ -450,8 +512,7 @@ JSFSCmd.prototype.doRmdir = function(args) {
 		throw "too many arguments";
 	var filename = args[0];
 	var self = this;
-	new File(filename).rmdir({ error: function(args){ self.errorCallback(args); },
-							   success: function(args){ self.successCallback(args); }});
+    fs.rmdir(filename, function(err) { if (err) { self.errorCallback(filename, err); }});
 };
 
 JSFSCmd.prototype.doRm = function(args) {	
@@ -462,8 +523,26 @@ JSFSCmd.prototype.doRm = function(args) {
 		throw "too many arguments";
 	var filename = args[0];
 	var self = this;
-	new File(filename).unlink({ error: function(args){ self.errorCallback(args); },
-								success: function(args){ self.successCallback(args); }});
+    fs.unlink(filename, function(err) { if (err) { self.errorCallback(filename, err); }});
+};
+
+JSFSCmd.prototype.doLn = function(args) {	
+	args = args.split(' ');
+    var symlink = false;
+    if (args[0] == '-s') {
+        args = args.splice(1);
+        symlink = true;
+    }
+	if (args.length != 2)
+		throw "usage: ln [-s] source_file target_file";
+	var source = args[0];
+	var target = args[1];
+	var self = this;
+    if (symlink) {
+        fs.symlink(source, target, function(err) { if (err) { self.errorCallback(source + ' ' + target, err); }});
+    } else {
+        fs.link(source, target, function(err) { if (err) { self.errorCallback(source + ' ' + target, err); }});
+    }
 };
 
 JSFSCmd.prototype.doCat = function(args) {	
@@ -474,14 +553,14 @@ JSFSCmd.prototype.doCat = function(args) {
 		throw "too many arguments";
 	var filename = args[0];
 	var self = this;
-	new File(filename).read({ type: 'raw',
-							  error: function(args){ self.errorCallback(args); },
-							  success: function(args){
-								  var content = args['content'];
-								  content = content.replace(/\n/g, '\r\n');
-								  self.writeln(content);
-								  self.successCallback();
-						      }});
+    fs.readFile(filename, function(err, data) {
+        if (err) {
+            self.errorCallback(filename, err);
+        } else {
+            data = data.toString().replace(/\n/g, '\r\n');
+            self.writeln(data);
+        }
+    });
 };
 
 JSFSCmd.prototype.doCp = function(args) {	
@@ -491,9 +570,17 @@ JSFSCmd.prototype.doCp = function(args) {
 	var from = args[0];
 	var to = args[1];
 	var self = this;
-	new File(from).copy({ to: to,
-						  error: function(args){ self.errorCallback(args); },
-						  success: function(args){ self.successCallback(args); }});
+    fs.readFile(from, function(err, data) {
+        if (err) {
+            self.errorCallback(from, err);
+        } else {
+            fs.writeFile(to, data, function(err) {
+                if (err) {
+                    self.errorCallback(to, err);
+                }
+            });
+        }
+    });
 };
 
 JSFSCmd.prototype.doRun = function(args) {	
@@ -504,13 +591,13 @@ JSFSCmd.prototype.doRun = function(args) {
 		throw "too many arguments";
 	var filename = args[0];
 	var self = this;
-	new File(filename).read({ type: 'raw',
-		  error: function(args){ self.errorCallback(args); },
-		  success: function(args){
-			  var content = args['content'];
-			  self.doExec(content);
-			  self.successCallback();
-	      }});
+    fs.readFile(filename, function(err, data) {
+        if (err) {
+            self.errorCallback(filename, err);
+        } else {
+			self.doExec(data);
+        }
+    });
 };
 
 JSFSCmd.prototype.doEdit = function(args) {	
@@ -521,14 +608,14 @@ JSFSCmd.prototype.doEdit = function(args) {
 		throw "too many arguments";
 	var filename = args[0];
 	var self = this;
-	new File(filename).read({ type: 'raw',
-		  error: function(args){ self.errorCallback(args); },
-		  success: function(args){
-			  var content = args['content'];
-			  window.parent.editor.setValue(content);
-			  self.writeln(filename + " loaded");
-			  self.successCallback();
-	      }});
+    fs.readFile(filename, function(err, data) {
+        if (err) {
+            self.errorCallback(filename, err);
+        } else {
+			window.parent.editor.setValue(data);
+			self.writeln(filename + " loaded");
+        }
+    });
 };
 
 JSFSCmd.prototype.doSave = function(args) {	
@@ -538,13 +625,31 @@ JSFSCmd.prototype.doSave = function(args) {
 	if (args.length > 1)
 		throw "too many arguments";
 	var filename = args[0];
-	var content = window.parent.editor.getValue();
+	var data = window.parent.editor.getValue();
 	var self = this;
-	new File(filename).write({content: content,
-						      type: 'raw',
-						      success: function(args) {
-						  			self.writeln(filename + " saved");						    	  
-						      }});
+    fs.writeFile(filename, data, function(err) {
+        if (err) {
+            self.errorCallback(filename, err);
+        } else {
+            self.writeln(filename + " saved");						    	  
+        }
+    });
+};
+
+JSFSCmd.prototype.doWrite = function(args) {	
+	args = args.split(' ');
+	if (args.length != 2)
+		throw "usage: write string file";
+    var data = args[0];
+	var filename = args[1];
+	var self = this;
+    fs.writeFile(filename, data, function(err) {
+        if (err) {
+            self.errorCallback(filename, err);
+        } else {
+            self.writeln(filename + " saved");						    	  
+        }
+    });
 };
 
 JSFSCmd.prototype.doHelp = function(args) {
